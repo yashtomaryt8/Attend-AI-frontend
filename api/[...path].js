@@ -1,57 +1,59 @@
-// frontend/api/[...path].js
-// Vercel serverless function — proxies ALL requests to Railway backend
-// Supports GET, POST, DELETE, multipart file uploads, everything.
+// Vercel Serverless Proxy — CommonJS (required for CRA projects)
+// Forwards ALL requests including POST + multipart file uploads to Railway
 
 const RAILWAY = 'https://web-production-de43d.up.railway.app';
 
-export const config = {
+// Required: tell Vercel not to parse the body so we can forward it raw
+module.exports.config = {
   api: {
-    bodyParser: false,     // must be false — we stream the raw body as-is
+    bodyParser: false,
     externalResolver: true,
   },
 };
 
-export default async function handler(req, res) {
-  // Build the target URL from the request path
-  // req.url will be like /api/scan/ → we forward to Railway /api/scan/
+module.exports.default = async function handler(req, res) {
   const targetUrl = `${RAILWAY}${req.url}`;
 
-  // Copy all incoming headers except host
-  const headers = {};
+  // Read raw body into a buffer
+  const bodyBuffer = await new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+
+  // Forward all headers except host
+  const forwardHeaders = {};
   for (const [key, val] of Object.entries(req.headers)) {
     if (key.toLowerCase() === 'host') continue;
-    headers[key] = val;
+    forwardHeaders[key] = val;
   }
 
   try {
-    // Stream the raw request body directly to Railway
     const upstream = await fetch(targetUrl, {
       method:  req.method,
-      headers: headers,
-      body:    req.method === 'GET' || req.method === 'HEAD' ? undefined : req,
-      // @ts-ignore — duplex needed for streaming body in Node 18+
-      duplex:  'half',
+      headers: forwardHeaders,
+      body:    ['GET', 'HEAD'].includes(req.method) ? undefined : bodyBuffer,
     });
 
-    // Forward status + headers back to client
-    res.status(upstream.status);
-    upstream.headers.forEach((val, key) => {
-      // Skip headers that cause issues
-      if (['transfer-encoding', 'connection'].includes(key.toLowerCase())) return;
-      res.setHeader(key, val);
-    });
-
-    // Always add CORS headers
+    // CORS headers — always
     res.setHeader('Access-Control-Allow-Origin',  '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With');
 
-    // Stream response body back
-    const buffer = await upstream.arrayBuffer();
-    res.end(Buffer.from(buffer));
+    // Forward response headers from Railway
+    upstream.headers.forEach((val, key) => {
+      if (['transfer-encoding', 'connection', 'keep-alive'].includes(key.toLowerCase())) return;
+      res.setHeader(key, val);
+    });
+
+    res.status(upstream.status);
+
+    const responseBuffer = Buffer.from(await upstream.arrayBuffer());
+    res.end(responseBuffer);
 
   } catch (err) {
-    console.error('Proxy error:', err);
-    res.status(502).json({ error: 'Proxy failed', detail: err.message });
+    console.error('[proxy] error:', err.message);
+    res.status(502).json({ error: 'Proxy error', detail: err.message });
   }
-}
+};
