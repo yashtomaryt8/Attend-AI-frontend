@@ -4,6 +4,15 @@ import { api } from '../utils/api';
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
+// Safely extract array from any API response shape
+function toArray(data) {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.results)) return data.results;
+  if (Array.isArray(data.data)) return data.data;
+  return [];
+}
+
 export default function Logs() {
   const [tab,     setTab]     = useState('logs');
   const [logs,    setLogs]    = useState([]);
@@ -20,7 +29,9 @@ export default function Logs() {
       if (filters.event) params.event = filters.event;
       if (filters.date)  params.date  = filters.date;
       const [l, u] = await Promise.all([api.logs(params), api.users()]);
-      setLogs(l); setUsers(u); setErr('');
+      setLogs(toArray(l));
+      setUsers(toArray(u));
+      setErr('');
     } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   }, [filters]);
@@ -89,9 +100,7 @@ export default function Logs() {
       {tab === 'logs' && (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>{loading ? 'Loading…' : `${logs.length} Records`}</CardTitle>
-            </div>
+            <CardTitle>{loading ? 'Loading…' : `${logs.length} Records`}</CardTitle>
           </CardHeader>
           {loading ? (
             <div className="flex items-center justify-center py-12"><Spinner /></div>
