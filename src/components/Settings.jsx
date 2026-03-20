@@ -20,14 +20,19 @@ function Section({ title, children }) {
   );
 }
 
+// Always use the Vercel proxy path — never call Railway directly
+// This bypasses ISP blocks (Jio etc.) since traffic goes Vercel → Railway server-side
+const PROXY_URL = window.location.origin + '/api';
+
 export default function Settings() {
-  const [health,     setHealth]     = useState(null);
-  const [resetting,  setResetting]  = useState(false);
-  const [resetMsg,   setResetMsg]   = useState('');
+  const [health,    setHealth]    = useState(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetMsg,  setResetMsg]  = useState('');
 
   useEffect(() => {
+    // Call through /api proxy, NOT Railway URL directly
     api.health()
-      .then(h => setHealth({ ok: true, users: h.users }))
+      .then(h => setHealth({ ok: true, users: h.users, hf: h.hf_space }))
       .catch(() => setHealth({ ok: false }));
   }, []);
 
@@ -48,23 +53,28 @@ export default function Settings() {
         <p className="text-xs text-gray-400 mt-0.5">System info &amp; configuration</p>
       </div>
 
-      {/* Backend health */}
+      {/* Backend health — shows Vercel proxy URL, not Railway directly */}
       <Card>
         <CardHeader><CardTitle>Backend</CardTitle></CardHeader>
         <CardBody>
           {health === null ? (
-            <div className="flex items-center gap-2 text-sm text-gray-400"><Spinner size={14} /> Checking…</div>
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <Spinner size={14} /> Checking…
+            </div>
           ) : (
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">
-                  {process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}
-                </p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-900 truncate">{PROXY_URL}</p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {health.ok ? `${health.users} students registered` : 'Cannot connect to backend'}
+                  {health.ok
+                    ? `${health.users} students registered · via Vercel proxy`
+                    : 'Cannot connect — check Railway is running'}
                 </p>
+                {health.ok && health.hf && (
+                  <p className="text-xs text-gray-400 truncate">HF: {health.hf}</p>
+                )}
               </div>
-              <span className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border
+              <span className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border shrink-0
                 ${health.ok
                   ? 'bg-green-50 text-green-700 border-green-200'
                   : 'bg-red-50 text-red-600 border-red-200'}`}>
@@ -76,74 +86,57 @@ export default function Settings() {
         </CardBody>
       </Card>
 
+      {/* Network info */}
+      <Card>
+        <CardHeader><CardTitle>Network Architecture</CardTitle></CardHeader>
+        <CardBody>
+          <div className="text-xs text-gray-500 space-y-2">
+            <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2.5">
+              <span className="text-base">📱</span>
+              <div>
+                <p className="font-semibold text-gray-700">Your Device</p>
+                <p className="text-gray-400">calls /api/* (relative)</p>
+              </div>
+              <span className="mx-1 text-gray-300">→</span>
+              <div>
+                <p className="font-semibold text-green-700">Vercel CDN</p>
+                <p className="text-gray-400">proxies to Railway</p>
+              </div>
+              <span className="mx-1 text-gray-300">→</span>
+              <div>
+                <p className="font-semibold text-gray-700">Railway</p>
+                <p className="text-gray-400">Django API</p>
+              </div>
+            </div>
+            <p className="text-gray-400">
+              All requests go through Vercel's CDN — ISP blocks (Jio, etc.)
+              on Railway's domain don't affect you because your device
+              only ever talks to Vercel.
+            </p>
+          </div>
+        </CardBody>
+      </Card>
+
       {/* System specs */}
       <Section title="System">
-        <Row label="Face model"      value="InsightFace buffalo_sc" />
-        <Row label="Inference"       value="CPU-only (onnxruntime)" />
-        <Row label="Model size"      value="~100 MB (downloads once)" />
-        <Row label="Scan interval"   value="800 ms" />
-        <Row label="Camera"          value="object-fit: contain" />
-        <Row label="Backend"         value="Django 5 + DRF" />
-        <Row label="Frontend"        value="React 19 + Tailwind" />
-        <Row label="Database"        value="SQLite (portable)" />
-      </Section>
-
-      {/* Free deployment */}
-      <Section title="Free Deployment">
-        <div className="space-y-4 pt-1">
-          {[
-            {
-              label: 'Backend → Railway.app',
-              color: 'text-violet-600',
-              steps: [
-                'Sign up free at railway.app',
-                'New project → Deploy from GitHub',
-                'Root dir: backend, Railway reads Procfile',
-                'Add env: SECRET_KEY, GROQ_API_KEY, ALLOWED_HOSTS, CORS_ALLOWED_ORIGINS',
-              ],
-            },
-            {
-              label: 'Frontend → Vercel',
-              color: 'text-blue-600',
-              steps: [
-                'Sign up free at vercel.com',
-                'Import GitHub repo, root dir: frontend',
-                'Add env: REACT_APP_API_URL=https://your-app.railway.app/api',
-                'Deploy → shareable HTTPS link, works on mobile',
-              ],
-            },
-            {
-              label: 'AI → Free options',
-              color: 'text-emerald-600',
-              steps: [
-                'Groq: free 14k req/day — console.groq.com',
-                'Ollama: 100% offline — ollama.com',
-                'Model: llama3.2:1b (~700MB, runs on i7-3770)',
-                'Set GROQ_API_KEY in backend .env',
-              ],
-            },
-          ].map(s => (
-            <div key={s.label}>
-              <p className={`text-xs font-bold mb-1.5 ${s.color}`}>{s.label}</p>
-              <ol className="space-y-1 list-decimal list-inside">
-                {s.steps.map((step, i) => (
-                  <li key={i} className="text-xs text-gray-500">{step}</li>
-                ))}
-              </ol>
-            </div>
-          ))}
-        </div>
+        <Row label="Face model"    value="InsightFace buffalo_sc" />
+        <Row label="Inference"     value="HF Space (free CPU)" />
+        <Row label="Scan interval" value="800 ms" />
+        <Row label="Backend"       value="Django 5 + DRF" />
+        <Row label="Frontend"      value="React 19 + Tailwind" />
+        <Row label="Proxy"         value="Vercel → Railway" />
+        <Row label="Database"      value="SQLite (portable)" />
       </Section>
 
       {/* Occlusion tips */}
-      <Section title="Better Occlusion Accuracy">
+      <Section title="Better Accuracy">
         <div className="space-y-3 pt-1">
           {[
-            { icon: '😷', label: 'Masks',          tip: 'Register 2–3 photos with mask on' },
-            { icon: '🕶',  label: 'Glasses',        tip: 'Register with glasses AND without' },
+            { icon: '😷', label: 'Masks',           tip: 'Register with mask on too' },
+            { icon: '🕶',  label: 'Glasses',         tip: 'Register with and without' },
             { icon: '⛑',  label: 'Helmet / Hoodie', tip: 'Register while wearing them' },
-            { icon: '📐',  label: 'Angles',         tip: 'Front · left · right · tilt · up · down' },
-            { icon: '🔆',  label: 'Lighting',       tip: 'Bright, even — avoid strong backlight' },
+            { icon: '📐',  label: 'Angles',          tip: 'Front · left · right · tilt' },
+            { icon: '🔆',  label: 'Lighting',        tip: 'Bright even light, avoid backlight' },
           ].map(r => (
             <div key={r.label} className="flex items-start gap-3 py-2.5 border-b border-gray-50 last:border-0">
               <span className="text-lg leading-none mt-0.5">{r.icon}</span>
@@ -161,19 +154,14 @@ export default function Settings() {
         <CardHeader><CardTitle className="text-red-500">Danger Zone</CardTitle></CardHeader>
         <CardBody>
           <p className="text-xs text-gray-500 mb-3">
-            Reset marks everyone as absent for today. Attendance records are not deleted.
+            Reset marks everyone as absent. Records are not deleted.
           </p>
           {resetMsg && (
             <p className={`text-xs font-medium mb-3 ${resetMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
               {resetMsg}
             </p>
           )}
-          <Button
-            variant="destructive"
-            className="w-full"
-            onClick={resetPresence}
-            disabled={resetting}
-          >
+          <Button variant="destructive" className="w-full" onClick={resetPresence} disabled={resetting}>
             {resetting ? <><Spinner size={14} /> Resetting…</> : '↺ Reset All Presence'}
           </Button>
         </CardBody>
