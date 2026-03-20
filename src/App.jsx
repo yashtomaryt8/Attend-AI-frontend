@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Dashboard from './components/Dashboard';
 import Scanner from './components/Scanner';
 import Register from './components/Register';
 import Logs from './components/Logs';
 import Analytics from './components/Analytics';
 import Settings from './components/Settings';
+import { api } from './utils/api';
 
 const TABS = [
   { id: 'dashboard', label: 'Home',     icon: '○' },
@@ -17,6 +18,15 @@ const TABS = [
 
 export default function App() {
   const [tab, setTab] = useState('dashboard');
+
+  // Keep Railway backend awake — ping every 4 minutes
+  // Railway free tier sleeps after 5 min inactivity
+  useEffect(() => {
+    const ping = () => api.health().catch(() => {});
+    ping(); // immediate ping on load
+    const t = setInterval(ping, 4 * 60 * 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const pages = {
     dashboard: <Dashboard setTab={setTab} />,
