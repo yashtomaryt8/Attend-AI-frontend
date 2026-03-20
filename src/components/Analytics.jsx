@@ -37,7 +37,7 @@ export default function Analytics() {
     try {
       const today = new Date().toISOString().slice(0, 10);
       const [a, s] = await Promise.all([api.analytics(), api.sessions({ date: today, limit: 30 })]);
-      setData(a); setSessions(s); setErr('');
+      setData(a); setSessions(Array.isArray(s) ? s : (s?.results || [])); setErr('');
     } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   }, []);
