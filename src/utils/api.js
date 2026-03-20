@@ -1,12 +1,11 @@
-// IMPORTANT: Always use relative /api path.
-// Vercel proxies /api/* → Railway server-side.
-// This means the user's device NEVER talks to Railway directly —
-// so ISP blocks (Jio, BSNL etc.) on Railway's domain have zero effect.
-//
-// For local dev: the proxy in package.json handles it ("proxy": "http://localhost:8000")
-// For production: vercel.json rewrites handle it
-
 const BASE = '/api';
+
+// Normalise any response shape to an array
+function arr(data) {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.results)) return data.results;
+  return [];
+}
 
 async function req(path, opts = {}) {
   const res = await fetch(`${BASE}${path}`, opts);
@@ -23,13 +22,16 @@ async function req(path, opts = {}) {
 export const api = {
   health:        ()         => req('/health/'),
   analytics:     ()         => req('/analytics/'),
-  users:         ()         => req('/users/'),
+
+  // List endpoints — always return arrays
+  users:         ()         => req('/users/').then(arr),
+  logs:          (p={})     => req('/logs/?' + new URLSearchParams(p).toString()).then(arr),
+  sessions:      (p={})     => req('/sessions/?' + new URLSearchParams(p).toString()).then(arr),
+
   deleteUser:    (id)       => req(`/users/${id}/delete/`, { method: 'DELETE' }),
   addPhotos:     (id, form) => req(`/users/${id}/photos/`, { method: 'POST', body: form }),
   register:      (form)     => req('/register/',  { method: 'POST', body: form }),
   scan:          (form)     => req('/scan/',       { method: 'POST', body: form }),
-  logs:          (p={})     => req('/logs/?' + new URLSearchParams(p).toString()),
-  sessions:      (p={})     => req('/sessions/?' + new URLSearchParams(p).toString()),
   exportCSV:     (date)     => req(`/export/?date=${date}`),
   resetPresence: ()         => req('/reset-presence/', { method: 'POST' }),
   aiInsight: (mode, prompt='') =>
